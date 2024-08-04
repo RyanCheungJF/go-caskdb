@@ -2,8 +2,11 @@ package caskdb
 
 import (
 	"errors"
+	"io"
 	"io/fs"
+	"log"
 	"os"
+	"time"
 )
 
 // DiskStore is a Log-Structured Hash Table as described in the BitCask paper. We
@@ -47,6 +50,9 @@ import (
 //	   	store.Set("othello", "shakespeare")
 //	   	author := store.Get("othello")
 type DiskStore struct {
+	offset int
+	hashmap map[string]KeyEntry
+	file *os.File
 }
 
 func isFileExists(fileName string) bool {
@@ -58,17 +64,67 @@ func isFileExists(fileName string) bool {
 }
 
 func NewDiskStore(fileName string) (*DiskStore, error) {
-	panic("implement me")
+	diskStore := &DiskStore{hashmap: make(map[string]KeyEntry)}
+	// everyone can read write
+	const FILE_PERMISSION = 0666
+	file, err := os.OpenFile(fileName, os.O_APPEND | os.O_RDWR | os.O_CREATE, FILE_PERMISSION)
+	if err != nil {
+		log.Fatalf("failed to open/ create file, err: %v", err)
+		return nil, err
+	}
+	diskStore.file = file
+	return diskStore, nil
 }
 
 func (d *DiskStore) Get(key string) string {
-	panic("implement me")
+	// get value from hashmap, in go lookups return a second param which is a bool
+	keyEntry, ok := d.hashmap[key]
+	if !ok {
+		log.Fatalf("key of %v does not exist in diskstore!", key)
+		return ""
+	}
+
+	buffer := d.read(int64(keyEntry.position), keyEntry.totalSize)
+	_, decodedKey, value := decodeKV(buffer)
+	if key != decodedKey {
+		log.Fatalf("unmatched keys, requested %v but got %v", key, decodedKey)
+	}
+	return value
 }
 
 func (d *DiskStore) Set(key string, value string) {
-	panic("implement me")
+	// setup kvp
+	timestamp := uint32(time.Now().Unix())
+	size, data := encodeKV(timestamp, key, value)
+	
+	// ensure persistent write without errors
+	d.write(data)
+
+	// set key and handle offset
+	keyEntry := NewKeyEntry(timestamp, uint32(d.offset), uint32(size))
+	d.hashmap[key] = keyEntry
+	d.offset += size
 }
 
 func (d *DiskStore) Close() bool {
 	panic("implement me")
+}
+
+func (d *DiskStore) read(position int64, size uint32) []byte {
+	const DEFAULT_WHENCE = 0
+	// file offset, different from the write offset we maintain
+	if _, err := d.file.Seek(position, DEFAULT_WHENCE); err != nil {
+		log.Fatalf("failed to seek to position: %v, error: %v", position, err)
+	}
+	buffer := make([]byte, size)
+	if _, err := io.ReadFull(d.file, buffer); err != nil {
+		log.Fatalf("failed to read from file, error: %v", err)
+	}
+	return buffer
+}
+
+func (d *DiskStore) write(data []byte) {
+	if _, err := d.file.Write(data); err != nil {
+		log.Fatalf("failed to write to file, error: %v", err)
+	}
 }

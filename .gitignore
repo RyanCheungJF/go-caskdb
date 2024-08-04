@@ -16,3 +16,6 @@ vendor/
 
 # coverage report file
 coverage.txt
+
+# test DB used in test cases
+test.db

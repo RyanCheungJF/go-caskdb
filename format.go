@@ -69,10 +69,13 @@ const headerSize = 12
 // the byte offset in the file. Whenever we insert/update a key, we create a new
 // KeyEntry object and insert that into keyDir.
 type KeyEntry struct {
+	timestamp uint32
+	position uint32
+	totalSize uint32
 }
 
 func NewKeyEntry(timestamp uint32, position uint32, totalSize uint32) KeyEntry {
-	panic("implement me")
+	return KeyEntry{timestamp, position, totalSize}
 }
 
 func encodeHeader(timestamp uint32, keySize uint32, valueSize uint32) []byte {
